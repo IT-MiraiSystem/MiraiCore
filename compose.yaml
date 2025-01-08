@@ -1,0 +1,17 @@
+services:
+  api:
+    build: .
+    ports:
+      - "80:80"
+    volumes:
+      - .:/usr/bin/MiraiCore
+    depends_on:
+      - db
+  db:
+    image: mariadb:latest
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+    privileged: true
+    restart: always
