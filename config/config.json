@@ -1,7 +1,13 @@
 {
-    "mysql": {
-        "host": "localhost",
+    "db": {
+        "host": "db",
         "user": "MiraiCore",
-        "pass": "KT34i5kirQpV"
+        "port":3306,
+        "pass": "KT34i5kirQpV",
+        "database": "ITmiraiApp"
+    },
+    "api":{
+        "host":"0.0.0.0",
+        "port":"80"
     }
 }
