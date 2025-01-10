@@ -4,7 +4,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - .:/usr/bin/MiraiCore
+      - ./:/usr/bin/MiraiCore
     depends_on:
       - db
   db:
@@ -15,3 +15,5 @@ services:
       - ./db:/docker-entrypoint-initdb.d
     privileged: true
     restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=TESTMODE
