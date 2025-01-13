@@ -2,12 +2,13 @@
     "db": {
         "host": "db",
         "user": "MiraiCore",
-        "port":3306,
+        "port": 3306,
         "pass": "KT34i5kirQpV",
         "database": "ITmiraiApp"
     },
-    "api":{
-        "host":"0.0.0.0",
-        "port":"80"
+    "api": {
+        "host": "0.0.0.0",
+        "port": "2192",
+        "location": "/api"
     }
 }
