@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 
 	firebase "firebase.google.com/go"
 	"github.com/gorilla/mux"
@@ -16,11 +19,14 @@ import (
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+
+	"github.com/dgrijalva/jwt-go"
 )
 
 type ApiConfig struct {
-	host string
-	port string
+	host     string
+	port     string
+	location string
 }
 
 type SigninRequest struct {
@@ -40,6 +46,94 @@ func ping(w http.ResponseWriter, r *http.Request) {
 	log.Info(r.Method + " /ping　" + "200 " + "IP:" + r.RemoteAddr)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(a)
+}
+
+func TikokuShitade(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		return
+	}
+
+	// "Bearer " プレフィックスを削除
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte("ACCESS_SECRET_KEY"), nil
+	})
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+		return
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		queryParams := r.URL.Query()
+		TikokuZikan := queryParams.Get("latenessTime")
+		if latenessSchool(claims["uid"].(string), TikokuZikan) != 200 {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Errorf("%s", r.Method+" /GoSchool　"+"500 "+"IP:"+r.RemoteAddr)
+			return
+		}
+		log.Info(r.Method + " /GoSchool　" + "200 " + "IP:" + r.RemoteAddr)
+		w.WriteHeader(http.StatusOK)
+		a := map[string]string{"Status": "Success", "message": "GoSchool"}
+		json.NewEncoder(w).Encode(a)
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+	}
+}
+
+func GoSchool(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		return
+	}
+
+	// "Bearer " プレフィックスを削除
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte("ACCESS_SECRET_KEY"), nil
+	})
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+		return
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if AttendSchool(claims["uid"].(string)) != 200 {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Errorf("%s", r.Method+" /GoSchool　"+"500 "+"IP:"+r.RemoteAddr)
+			return
+		}
+		log.Info(r.Method + " /GoSchool　" + "200 " + "IP:" + r.RemoteAddr)
+		w.WriteHeader(http.StatusOK)
+		a := map[string]string{"Status": "Success", "message": "GoSchool"}
+		json.NewEncoder(w).Encode(a)
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+	}
 }
 
 func signin(w http.ResponseWriter, r *http.Request) {
@@ -87,17 +181,53 @@ func signin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if doc.Ref.ID == req.UID && doc.Data()["pass"] == req.Pass {
-			log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
-			a := map[string]string{"Status": "Success", "message": "pong"}
-			json.NewEncoder(w).Encode(a)
 			// SQLに登録する+JWTを返す
-			InsertUser(req.UID, req.Email, req.PhotoUrl)
+			if err := SearchUser(req.UID); err != 200 {
+				log.Info(r.Method + " /signin　" + strconv.Itoa(err) + " IP:" + r.RemoteAddr)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			} else if err == 404 {
+				http.Error(w, "Acount Not Found", http.StatusNotFound)
+			} else {
+				claims := jwt.MapClaims{
+					"uid": req.UID,
+					"exp": time.Now().Add(time.Hour * 1).Unix(),
+				}
+				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+				accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+				a := map[string]string{"token": accessToken}
+				log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
+				json.NewEncoder(w).Encode(a)
+			}
 			return
 		}
 	}
-
-	log.Info(r.Method + " /signin　" + "404 " + "IP:" + r.RemoteAddr)
-	http.Error(w, "Account Not Found", http.StatusNotFound)
+	// 該当するユーザがいなかった場合
+	// Firestoreに登録してJWTを返す
+	userpass := generateRandomString(30)
+	_, err = client.Collection("userPass").Doc(req.UID).Set(ctx, map[string]interface{}{
+		"pass": userpass,
+	})
+	if err != nil {
+		log.Errorf("Failed to set Firestore document: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
+		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	} else {
+		claims := jwt.MapClaims{
+			"uid": req.UID,
+			"exp": time.Now().Add(time.Hour * 1).Unix(),
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+		a := map[string]string{"token": accessToken}
+		log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
+		json.NewEncoder(w).Encode(a)
+	}
 }
 
 // CustomFormatter is a custom logrus formatter
@@ -138,14 +268,17 @@ func main() {
 	_ = json.Unmarshal(byteArray, &config)
 	APIconfig.host, _ = config.(map[string]interface{})["api"].(map[string]interface{})["host"].(string)
 	APIconfig.port, _ = config.(map[string]interface{})["api"].(map[string]interface{})["port"].(string)
+	APIconfig.location, _ = config.(map[string]interface{})["api"].(map[string]interface{})["location"].(string)
 	SQLconfig, err = DBinit(AppDir + "/config/config.json")
 	if err != nil {
 		log.Errorf("Failed to initialize database: %v", err)
 	}
 	// ルーティング設定
 	r := mux.NewRouter()
-	r.HandleFunc("/ping", ping).Methods("GET")
-	r.HandleFunc("/signin", signin).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/ping", ping).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/TikokuShitade", TikokuShitade).Methods("GET")
 
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
