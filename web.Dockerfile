@@ -11,5 +11,6 @@ FROM nginx:alpine
 ENV TZ="Asia/Tokyo"
 RUN echo $TZ > /etc/timezone
 COPY --from=build /tmp/miraigate-for-teacher/dist /var/www/html/teacher
+RUN cp /usr/share/nginx/html/index.html /var/www/html/index.html
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 CMD ["nginx", "-g", "daemon off;"]
