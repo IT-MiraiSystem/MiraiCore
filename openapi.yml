@@ -1,0 +1,119 @@
+openapi: 3.0.1
+info:
+  title: MiraiCore API
+  version: 1.0.0
+  description: MiraiCoreで使用するAPIの仕様書
+
+servers:
+  - url: http://localhost/api
+
+paths:
+  /ping:
+    get:
+      summary: Ping
+      description: サーバーの稼働確認
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+
+  /signin:
+    post:
+      summary: サインイン
+      description: ユーザーのサインイン
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uid:
+                  type: string
+                email:
+                  type: string
+                pass:
+                  type: string
+                photoUrl:
+                  type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        "401":
+          description: 認証失敗
+        "500":
+          description: サーバーエラー
+
+  /GoSchool:
+    get:
+      summary: 登校
+      description: ユーザーの登校記録
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: 認証失敗
+        "500":
+          description: サーバーエラー
+
+  /TikokuShitade:
+    get:
+      summary: 遅刻
+      description: ユーザーの遅刻記録
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: latenessTime
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+        "401":
+          description: 認証失敗
+        "500":
+          description: サーバーエラー
