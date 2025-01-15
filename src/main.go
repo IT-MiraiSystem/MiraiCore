@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -56,7 +55,6 @@ func TikokuShitade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// "Bearer " プレフィックスを削除
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
 		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
@@ -164,7 +162,10 @@ func signin(w http.ResponseWriter, r *http.Request) {
 	client, err := app.Firestore(ctx)
 	if err != nil {
 		log.Errorf("Failed to initialize Firestore client: %v", err)
+		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
 		return
 	}
 	defer client.Close()
@@ -177,17 +178,30 @@ func signin(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Errorf("Failed to iterate Firestore documents: %v", err)
+			log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+			json.NewEncoder(w).Encode(a)
 			return
 		}
 		if doc.Ref.ID == req.UID && doc.Data()["pass"] == req.Pass {
 			// SQLに登録する+JWTを返す
-			if err := SearchUser(req.UID); err != 200 {
-				log.Info(r.Method + " /signin　" + strconv.Itoa(err) + " IP:" + r.RemoteAddr)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
-			} else if err == 404 {
-				http.Error(w, "Acount Not Found", http.StatusNotFound)
+			if err := SearchUser(req.UID); err == 404 {
+				if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
+					log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				} else {
+					claims := jwt.MapClaims{
+						"uid": req.UID,
+						"exp": time.Now().Add(time.Hour * 1).Unix(),
+					}
+					token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+					accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+					a := map[string]string{"token": accessToken}
+					log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
+					json.NewEncoder(w).Encode(a)
+				}
 			} else {
 				claims := jwt.MapClaims{
 					"uid": req.UID,
