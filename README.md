@@ -13,6 +13,14 @@
 ## サーバーログについて
 log/MiraiCore-API.logにサーバーログを記載する。
 500MBまで貯まると自動的にもう一つファイルが作られる
+## ビルド方法
+```sh
+docker compose up -d
+```
+## ビルドした際のURLなど
+[API Base URL](http://localhost/api)
+[API Document](http://localhost/document/api)
+[教師用アプリ](http://localhost/teacher)
 ### tailコマンドはいいぞ
 ``` sh
 sudo tail -f log/MiraiCore-API.log
