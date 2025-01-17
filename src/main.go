@@ -16,7 +16,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/natefinch/lumberjack"
 	log "github.com/sirupsen/logrus"
-	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 
 	"github.com/dgrijalva/jwt-go"
@@ -33,6 +32,16 @@ type SigninRequest struct {
 	Email    string `json:"email"`
 	Pass     string `json:"pass"`
 	PhotoUrl string `json:"photoUrl"`
+}
+
+type CustomFormatter struct {
+	TimestampFormat string
+}
+
+func (f *CustomFormatter) Format(entry *log.Entry) ([]byte, error) {
+	timestamp := entry.Time.Format(f.TimestampFormat)
+	logMessage := fmt.Sprintf("%s [%s] %s\n", timestamp, entry.Level.String(), entry.Message)
+	return []byte(logMessage), nil
 }
 
 var AppDir string
@@ -171,131 +180,87 @@ func GoSchool(w http.ResponseWriter, r *http.Request) {
 
 func signin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Content-Type is not application/json", http.StatusUnsupportedMediaType)
-		log.Errorf("%s", r.Method+" /signin　"+"415 "+"IP:"+r.RemoteAddr)
-		return
-	}
-
-	var req SigninRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request payload", http.StatusBadRequest)
-		log.Errorf("Invalid request payload: %v", err)
-		return
-	}
-
-	ctx := context.Background()
-	sa := option.WithCredentialsFile(AppDir + "/config/FirebaseConfig.json")
-	config := &firebase.Config{ProjectID: "it-high-school-app"} // プロジェクトIDを指定
-	app, err := firebase.NewApp(ctx, config, sa)
+	opt := option.WithCredentialsFile(AppDir + "/config/FirebaseConfig.json")
+	config := &firebase.Config{ProjectID: "it-high-school-app"}
+	app, err := firebase.NewApp(context.Background(), config, opt)
 	if err != nil {
-		log.Errorf("Failed to initialize Firebase app: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
-		json.NewEncoder(w).Encode(a)
-		return
-	}
-
-	client, err := app.Firestore(ctx)
-	if err != nil {
-		log.Errorf("Failed to initialize Firestore client: %v", err)
+		log.Errorf("Failed to create Firebase app: %v", err)
 		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
 		json.NewEncoder(w).Encode(a)
 		return
 	}
-	defer client.Close()
+	client, err := app.Auth(context.Background())
+	if err != nil {
+		log.Errorf("Failed to create Firebase client: %v", err)
+		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := client.VerifyIDToken(context.Background(), r.Header.Get("Authorization"))
+	if err != nil {
+		log.Errorf("Failed to verify ID token: %v", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	uid := token.UID
 
-	iter := client.Collection("userPass").Documents(ctx)
-	for {
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
-		}
+	userRecord, err := client.GetUser(context.Background(), uid)
+	if err != nil {
+		log.Errorf("Failed to get user data: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+
+	email := userRecord.Email
+	photoURL := userRecord.PhotoURL
+
+	if SearchUser(uid) == 200 {
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"uid": uid,
+			"exp": time.Now().Add(time.Hour * 24).Unix(),
+		})
+		tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
 		if err != nil {
-			log.Errorf("Failed to iterate Firestore documents: %v", err)
-			log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
+			log.Errorf("Failed to sign token: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
 			json.NewEncoder(w).Encode(a)
 			return
 		}
-		if doc.Ref.ID == req.UID && doc.Data()["pass"] == req.Pass {
-			// SQLに登録する+JWTを返す
-			if err := SearchUser(req.UID); err == 404 {
-				if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
-					log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-					a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
-					json.NewEncoder(w).Encode(a)
-					return
-				} else {
-					claims := jwt.MapClaims{
-						"uid": req.UID,
-						"exp": time.Now().Add(time.Hour * 1).Unix(),
-					}
-					token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-					accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
-					a := map[string]string{"token": accessToken}
-					log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
-					json.NewEncoder(w).Encode(a)
-				}
-			} else {
-				claims := jwt.MapClaims{
-					"uid": req.UID,
-					"exp": time.Now().Add(time.Hour * 1).Unix(),
-				}
-				token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-				accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
-				a := map[string]string{"token": accessToken}
-				log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
-				json.NewEncoder(w).Encode(a)
-			}
-			return
-		}
-	}
-	// 該当するユーザがいなかった場合
-	// Firestoreに登録してJWTを返す
-	userpass := generateRandomString(30)
-	_, err = client.Collection("userPass").Doc(req.UID).Set(ctx, map[string]interface{}{
-		"pass": userpass,
-	})
-	if err != nil {
-		log.Errorf("Failed to set Firestore document: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		w.WriteHeader(http.StatusOK)
+		a := map[string]string{"token": tokenString}
 		json.NewEncoder(w).Encode(a)
-		return
-	}
-	if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
-		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
-		json.NewEncoder(w).Encode(a)
-		return
 	} else {
-		claims := jwt.MapClaims{
-			"uid": req.UID,
-			"exp": time.Now().Add(time.Hour * 1).Unix(),
+		if InsertUser(uid, email, photoURL) == 200 {
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"uid": uid,
+				"exp": time.Now().Add(time.Hour * 24).Unix(),
+			})
+			tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+			if err != nil {
+				log.Errorf("Failed to sign token: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			a := map[string]string{"token": tokenString}
+			json.NewEncoder(w).Encode(a)
+		} else {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+			json.NewEncoder(w).Encode(a)
 		}
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-		accessToken, _ := token.SignedString([]byte("ACCESS_SECRET_KEY"))
-		a := map[string]string{"token": accessToken}
-		log.Info(r.Method + " /signin　" + "200 " + "IP:" + r.RemoteAddr)
-		json.NewEncoder(w).Encode(a)
 	}
-}
-
-// CustomFormatter is a custom logrus formatter
-type CustomFormatter struct {
-	TimestampFormat string
-}
-
-func (f *CustomFormatter) Format(entry *log.Entry) ([]byte, error) {
-	timestamp := entry.Time.Format(f.TimestampFormat)
-	logMessage := fmt.Sprintf("%s [%s] %s\n", timestamp, entry.Level.String(), entry.Message)
-	return []byte(logMessage), nil
 }
 
 func main() {
