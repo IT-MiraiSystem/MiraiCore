@@ -1,20 +1,21 @@
-openapi: 3.0.1
+openapi: 3.0.0
 info:
   title: MiraiCore API
   version: 1.0.0
-  description: MiraiCoreで使用するAPIの仕様書
-
 servers:
-  - url: http://localhost/api
-
+  - url: http://{host}:{port}/api
+    variables:
+      host:
+        default: localhost
+      port:
+        default: 80
 paths:
   /ping:
     get:
-      summary: Ping
-      description: サーバーの稼働確認
+      summary: Ping the server
       responses:
-        "200":
-          description: 成功
+        '200':
+          description: Successful response
           content:
             application/json:
               schema:
@@ -24,11 +25,9 @@ paths:
                     type: string
                   message:
                     type: string
-
   /signin:
     post:
-      summary: サインイン
-      description: ユーザーのサインイン
+      summary: Sign in a user
       requestBody:
         required: true
         content:
@@ -45,8 +44,8 @@ paths:
                 photoUrl:
                   type: string
       responses:
-        "200":
-          description: 成功
+        '200':
+          description: Successful sign in
           content:
             application/json:
               schema:
@@ -54,24 +53,24 @@ paths:
                 properties:
                   token:
                     type: string
-        "401":
-          description: 認証失敗
-        "500":
-          description: サーバーエラー
-
+        '400':
+          description: Invalid request payload
+        '415':
+          description: Unsupported Media Type
+        '500':
+          description: Internal Server Error
   /GoSchool:
     get:
-      summary: 登校
-      description: ユーザーの登校記録
+      summary: Mark attendance for a user
       parameters:
-        - name: Authorization
-          in: header
+        - in: header
+          name: Authorization
           required: true
           schema:
             type: string
       responses:
-        "200":
-          description: 成功
+        '200':
+          description: Successful attendance
           content:
             application/json:
               schema:
@@ -81,39 +80,88 @@ paths:
                     type: string
                   message:
                     type: string
-        "401":
-          description: 認証失敗
-        "500":
-          description: サーバーエラー
-
-  /TikokuShitade:
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+  /LessonDetails:
     get:
-      summary: 遅刻
-      description: ユーザーの遅刻記録
+      summary: Get lesson details
       parameters:
-        - name: Authorization
-          in: header
+        - in: header
+          name: Authorization
           required: true
           schema:
             type: string
-        - name: latenessTime
-          in: query
+        - in: query
+          name: ClassID
+          schema:
+            type: string
+        - in: query
+          name: StartDate
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: EndDate
           required: true
           schema:
             type: string
       responses:
-        "200":
-          description: 成功
+        '200':
+          description: Successful response
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  Status:
-                    type: string
-                  message:
-                    type: string
-        "401":
-          description: 認証失敗
-        "500":
-          description: サーバーエラー
+                  Monday:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ClassID:
+                          type: string
+                        DayOfTheWeek:
+                          type: string
+                        LessonNumber:
+                          type: integer
+                        Lesson:
+                          type: string
+                        Room:
+                          type: string
+                        Teacher:
+                          type: string
+                        StartTime:
+                          type: string
+                        EndTime:
+                          type: string
+                  Tuesday:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ClassID:
+                          type: string
+                        DayOfTheWeek:
+                          type: string
+                        LessonNumber:
+                          type: integer
+                        Lesson:
+                          type: string
+                        Room:
+                          type: string
+                        Teacher:
+                          type: string
+                        StartTime:
+                          type: string
+                        EndTime:
+                          type: string
+        '400':
+          description: Missing required parameters
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+        '404':
+          description: Not Found

@@ -47,20 +47,28 @@ func ping(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a)
 }
 
-func TikokuShitade(w http.ResponseWriter, r *http.Request) {
+func LessonChange(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func LessonDetails(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Authorizationヘッダーの検証
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Authorization header missing"})
 		return
 	}
-
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
 		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"})
 		return
 	}
 
+	// JWTトークンの検証
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -68,27 +76,54 @@ func TikokuShitade(w http.ResponseWriter, r *http.Request) {
 		return []byte("ACCESS_SECRET_KEY"), nil
 	})
 	if err != nil {
+		log.Errorf("JWT parsing error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Unauthorized"})
 		return
 	}
 
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		queryParams := r.URL.Query()
-		TikokuZikan := queryParams.Get("latenessTime")
-		if latenessSchool(claims["uid"].(string), TikokuZikan) != 200 {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			log.Errorf("%s", r.Method+" /GoSchool　"+"500 "+"IP:"+r.RemoteAddr)
-			return
-		}
-		log.Info(r.Method + " /GoSchool　" + "200 " + "IP:" + r.RemoteAddr)
-		w.WriteHeader(http.StatusOK)
-		a := map[string]string{"Status": "Success", "message": "GoSchool"}
-		json.NewEncoder(w).Encode(a)
-	} else {
+	// トークンのクレームを検証
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Unauthorized"})
+		return
 	}
+
+	// クエリパラメータの検証
+	Param := r.URL.Query()
+	classID := Param.Get("ClassID")
+	startDate := Param.Get("StartDate")
+	endDate := Param.Get("EndDate")
+
+	if classID == "" || startDate == "" || endDate == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"Status":  "Failed",
+			"message": "Missing required parameters (ClassID, StartDate, EndDate)",
+		})
+		return
+	}
+
+	// レッスンデータの取得
+	log.Infof("Access FROM %s", claims["uid"].(string))
+	statusCode, lesson := GetLesson(classID, startDate, endDate)
+	if statusCode != http.StatusOK {
+		log.Errorf("Error retrieving lesson data: %v", lesson)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Internal Server Error"})
+		return
+	}
+
+	// レスポンスの生成
+	if len(lesson) == 0 {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Not Found"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(lesson)
 }
 
 func GoSchool(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +191,8 @@ func signin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Errorf("Failed to initialize Firebase app: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
 		return
 	}
 
@@ -190,6 +227,8 @@ func signin(w http.ResponseWriter, r *http.Request) {
 				if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
 					log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+					json.NewEncoder(w).Encode(a)
 					return
 				} else {
 					claims := jwt.MapClaims{
@@ -225,11 +264,15 @@ func signin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Errorf("Failed to set Firestore document: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
 		return
 	}
 	if err := InsertUser(req.UID, req.Email, req.PhotoUrl); err != 200 {
 		log.Errorf("%s", r.Method+" /signin　"+"500 "+"IP:"+r.RemoteAddr)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+		json.NewEncoder(w).Encode(a)
 		return
 	} else {
 		claims := jwt.MapClaims{
@@ -292,7 +335,7 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/ping", ping).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
-	r.HandleFunc(APIconfig.location+"/TikokuShitade", TikokuShitade).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/LessonDetails", LessonDetails).Methods("GET")
 
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)

@@ -19,6 +19,7 @@ type DBconfig struct {
 	user     string
 	pass     string
 }
+
 type User struct {
 	uid           string
 	name          string
@@ -28,6 +29,18 @@ type User struct {
 	email         string
 	SchoolClub    string
 	Number        int
+	Permission    string
+}
+
+type Lesson struct {
+	ClassID      string `json:"ClassID"`
+	DayOfTheWeek string `json:"DayOfTheWeek"`
+	LessonNumber int    `json:"LessonNumber"`
+	Lesson       string `json:"Lesson"`
+	Room         string `json:"Room"`
+	Teacher      string `json:"Teacher"`
+	StartTime    string `json:"StartTime"`
+	EndTime      string `json:"EndTime"`
 }
 
 func DBinit(configPath string) (DBconfig, error) {
@@ -62,7 +75,7 @@ func UserInfo(uid string) (user User) {
 	} else {
 		defer rows.Close()
 		for rows.Next() {
-			err = rows.Scan(&user.uid, &user.name, &user.email, &user.photoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub)
+			err = rows.Scan(&user.uid, &user.name, &user.email, &user.photoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -70,6 +83,78 @@ func UserInfo(uid string) (user User) {
 		return user
 	}
 	return User{}
+}
+
+func GetLesson(classid string, startDate string, EndDate string) (statuscode int, returnLesson map[string]interface{}) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		log.Errorf("Error opening database connection: %v", err)
+		return 500, nil
+	}
+	defer db.Close()
+
+	DayOfWeek := [...]string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"}
+	returnLesson = make(map[string]interface{})
+
+	for _, day := range DayOfWeek {
+		// クエリ実行
+		rows, err := db.Query(`
+			SELECT 
+				ClassTimetable.ClassID, 
+				ClassTimetable.DayOfTheWeek, 
+				ClassTimetable.LeasonNumber, 
+				COALESCE(ChangeOfClass.Lesson, ClassTimetable.Lesson) AS Lesson, 
+				COALESCE(ChangeOfClass.Room, ClassTimetable.Room) AS Room, 
+				COALESCE(ChangeOfClass.Teacher, ClassTimetable.Teacher) AS Teacher, 
+				ClassTimetable.StartTime, 
+				ClassTimetable.EndTime 
+			FROM 
+				ClassTimetable 
+			LEFT JOIN 
+				ChangeOfClass 
+			ON 
+				ClassTimetable.ClassID = ChangeOfClass.ClassID 
+				AND ClassTimetable.LeasonNumber = ChangeOfClass.LeasonNumber 
+				AND ChangeOfClass.Date BETWEEN ? AND ? 
+			WHERE 
+				ClassTimetable.ClassID = ? 
+				AND ClassTimetable.DayOfTheWeek = ?
+			ORDER BY
+				ClassTimetable.LeasonNumber;
+		`, startDate, EndDate, classid, day)
+		if err != nil {
+			log.Errorf("Error querying database for day %s: %v", day, err)
+			return 500, nil
+		}
+
+		// rows を defer でクローズする前に適切に処理
+		var lessons []Lesson
+		for rows.Next() {
+			var lesson Lesson
+			if err := rows.Scan(
+				&lesson.ClassID,
+				&lesson.DayOfTheWeek,
+				&lesson.LessonNumber,
+				&lesson.Lesson,
+				&lesson.Room,
+				&lesson.Teacher,
+				&lesson.StartTime,
+				&lesson.EndTime,
+			); err != nil {
+				log.Errorf("Error scanning row for day %s: %v", day, err)
+				rows.Close() // 明示的にリソースを解放
+				return 500, nil
+			}
+			lessons = append(lessons, lesson)
+		}
+		rows.Close() // 明示的にリソースを解放
+
+		// その日のデータを結果マップに追加
+		returnLesson[day] = lessons
+	}
+
+	// 正常終了
+	return 200, returnLesson
 }
 
 func AttendSchool(uid string) (statuscode int) {
@@ -80,23 +165,8 @@ func AttendSchool(uid string) (statuscode int) {
 	defer db.Close()
 	var user User = UserInfo(uid)
 	currentDate := time.Now().Format("2006-01-02")
-	_, err = db.Exec("INSERT INTO GoSchool (uid, name, email, photoURL, GradeInSchool,ClassInSchool, Number, Date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", uid, user.name, user.email, user.photoURL, user.GradeInSchool, user.ClassInSchool, user.Number, currentDate)
-	if err != nil {
-		log.Errorf("Error going to school: %v", err)
-		return 500
-	}
-	return 200
-}
-
-func latenessSchool(uid string, latenessTime string) (statuscode int) {
-	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
-	if err != nil {
-		panic(err.Error())
-	}
-	defer db.Close()
-	var user User = UserInfo(uid)
-	currentDate := time.Now().Format("2006-01-02")
-	_, err = db.Exec("INSERT INTO GoSchool (uid, name, email, photoURL, GradeInSchool,ClassInSchool, Number, Date, latenessTime,lateness) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", uid, user.name, user.email, user.photoURL, user.GradeInSchool, user.ClassInSchool, user.Number, currentDate, latenessTime, true)
+	CommuteTime := time.Now().Format("15:04:05")
+	_, err = db.Exec("INSERT INTO GoSchool (uid, name, email, photoURL, GradeInSchool, ClassInSchool, Number, Date, CommuteTime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", uid, user.name, user.email, user.photoURL, user.GradeInSchool, user.ClassInSchool, user.Number, currentDate, CommuteTime)
 	if err != nil {
 		log.Errorf("Error going to school: %v", err)
 		return 500
@@ -141,6 +211,7 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 	var Clubs []string
 	var ClassList []string
 	var GradeList []string
+	var Permissions []string
 	for _, sheetName := range f.GetSheetMap() {
 		rows := f.GetRows(sheetName)
 		for _, row := range rows {
@@ -150,6 +221,13 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 			Names = append(Names, row[3])
 			Emails = append(Emails, row[4])
 			Clubs = append(Clubs, row[5])
+			if sheetName == "教員" {
+				Permissions = append(Permissions, "teacher")
+			} else if sheetName != "教員" {
+				Permissions = append(Permissions, "student")
+			} else {
+				Permissions = append(Permissions, "admin")
+			}
 		}
 	}
 	for i, e := range Emails {
@@ -159,13 +237,11 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 				log.Errorf("Error converting number: %v", err)
 				return 500
 			}
-			log.Infof("Inserting user: %v", Names[i])
-			_, err = db.Exec("INSERT INTO Users(uid,name,photoURL,GradeInSchool,ClassInSchool,email,SchoolClub,Number) VALUES (?,?,?,?,?,?,?,?)", uid, Names[i], photoUrl, GradeList[i], ClassList[i], email, Clubs[i], number)
+			_, err = db.Exec("INSERT INTO Users(uid, name, photoURL, GradeInSchool, ClassInSchool, email, SchoolClub, Number, Permission) VALUES (?,?,?,?,?,?,?,?,?)", uid, Names[i], photoUrl, GradeList[i], ClassList[i], email, Clubs[i], number, Permissions[i])
 			if err != nil {
 				log.Errorf("Error inserting user: %v", err)
 				return 500
 			} else {
-				log.Infof("Successfully inserted user: %v", Names[i])
 				return 200
 			}
 		}

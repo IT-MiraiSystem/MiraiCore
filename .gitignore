@@ -1,3 +1,4 @@
 log/*
 config/FirebaseConfig.json
 db/IT未来在学生.xlsx
+db/授業登録.sql
