@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `Users` (
   `Number` int(11) NOT NULL,
   `SchoolClub` text,
   `location` text,
-  `Permission` text,
+  `Permission` int(1) DEFAULT 0,
   PRIMARY KEY (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 

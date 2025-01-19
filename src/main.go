@@ -62,7 +62,13 @@ func LessonChange(w http.ResponseWriter, r *http.Request) {
 
 func LessonDetails(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /LessonDetails　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
 	// Authorizationヘッダーの検証
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
@@ -137,6 +143,13 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 
 func GoSchool(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /GoSchool　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
@@ -180,6 +193,29 @@ func GoSchool(w http.ResponseWriter, r *http.Request) {
 
 func signin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /signin　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	fmt.Println(authHeader)
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /signin　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
 	opt := option.WithCredentialsFile(AppDir + "/config/FirebaseConfig.json")
 	config := &firebase.Config{ProjectID: "it-high-school-app"}
 	app, err := firebase.NewApp(context.Background(), config, opt)
@@ -200,7 +236,7 @@ func signin(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(a)
 		return
 	}
-	token, err := client.VerifyIDToken(context.Background(), r.Header.Get("Authorization"))
+	token, err := client.VerifyIDToken(context.Background(), tokenString)
 	if err != nil {
 		log.Errorf("Failed to verify ID token: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -222,10 +258,12 @@ func signin(w http.ResponseWriter, r *http.Request) {
 	email := userRecord.Email
 	photoURL := userRecord.PhotoURL
 
-	if SearchUser(uid) == 200 {
+	user := UserInfo(uid)
+	if user != (User{}) {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"uid": uid,
-			"exp": time.Now().Add(time.Hour * 24).Unix(),
+			"uid":        user.uid,
+			"Permission": user.Permission,
+			"exp":        time.Now().Add(time.Hour * 24).Unix(),
 		})
 		tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
 		if err != nil {
@@ -239,10 +277,12 @@ func signin(w http.ResponseWriter, r *http.Request) {
 		a := map[string]string{"token": tokenString}
 		json.NewEncoder(w).Encode(a)
 	} else {
-		if InsertUser(uid, email, photoURL) == 200 {
+		permission, statuscode := InsertUser(uid, email, photoURL)
+		if statuscode == 200 {
 			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"uid": uid,
-				"exp": time.Now().Add(time.Hour * 24).Unix(),
+				"uid":        uid,
+				"Permission": permission,
+				"exp":        time.Now().Add(time.Hour * 24).Unix(),
 			})
 			tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
 			if err != nil {
@@ -257,6 +297,7 @@ func signin(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(a)
 		} else {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			log.Errorf("%s /signin 500 IP:%s", r.Method, r.RemoteAddr)
 			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
 			json.NewEncoder(w).Encode(a)
 		}
@@ -270,7 +311,6 @@ func main() {
 		log.Fatalf("Failed to get absolute path: %v", err)
 	}
 
-	// ログの出力先をファイルと標準出力に設定
 	logFile := &lumberjack.Logger{
 		Filename:   AppDir + "/log/MiraiCore-API.log",
 		MaxSize:    500,
@@ -295,10 +335,11 @@ func main() {
 	if err != nil {
 		log.Errorf("Failed to initialize database: %v", err)
 	}
+
 	// ルーティング設定
 	r := mux.NewRouter()
-	r.HandleFunc(APIconfig.location+"/ping", ping).Methods("GET")
-	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/ping", ping).Methods("GET", "POST")
+	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonDetails", LessonDetails).Methods("GET")
 

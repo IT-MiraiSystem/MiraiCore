@@ -193,7 +193,7 @@ func SearchUser(uid string) (statuscode int) {
 	}
 }
 
-func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
+func InsertUser(uid string, email string, photoUrl string) (Permission int, statuscode int) {
 	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
 	if err != nil {
 		panic(err.Error())
@@ -203,7 +203,7 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 	f, err := excelize.OpenFile(AppDir + "/db/IT未来在学生.xlsx")
 	if err != nil {
 		log.Errorf("Error: %v", err)
-		return 500
+		return 0, 500
 	}
 	var Numbers []string
 	var Names []string
@@ -211,7 +211,7 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 	var Clubs []string
 	var ClassList []string
 	var GradeList []string
-	var Permissions []string
+	var Permissions []int
 	for _, sheetName := range f.GetSheetMap() {
 		rows := f.GetRows(sheetName)
 		for _, row := range rows {
@@ -222,11 +222,11 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 			Emails = append(Emails, row[4])
 			Clubs = append(Clubs, row[5])
 			if sheetName == "教員" {
-				Permissions = append(Permissions, "teacher")
+				Permissions = append(Permissions, 2)
 			} else if sheetName != "教員" {
-				Permissions = append(Permissions, "student")
+				Permissions = append(Permissions, 1)
 			} else {
-				Permissions = append(Permissions, "admin")
+				Permissions = append(Permissions, 3)
 			}
 		}
 	}
@@ -235,16 +235,16 @@ func InsertUser(uid string, email string, photoUrl string) (statuscode int) {
 			number, err := strconv.Atoi(Numbers[i])
 			if err != nil {
 				log.Errorf("Error converting number: %v", err)
-				return 500
+				return 0, 500
 			}
 			_, err = db.Exec("INSERT INTO Users(uid, name, photoURL, GradeInSchool, ClassInSchool, email, SchoolClub, Number, Permission) VALUES (?,?,?,?,?,?,?,?,?)", uid, Names[i], photoUrl, GradeList[i], ClassList[i], email, Clubs[i], number, Permissions[i])
 			if err != nil {
 				log.Errorf("Error inserting user: %v", err)
-				return 500
+				return 0, 500
 			} else {
-				return 200
+				return Permissions[i], 200
 			}
 		}
 	}
-	return 404
+	return 0, 404
 }
