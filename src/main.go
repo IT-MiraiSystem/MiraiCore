@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,8 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 
 	firebase "firebase.google.com/go"
 	"github.com/gorilla/mux"
@@ -48,6 +49,9 @@ var AppDir string
 var APIconfig ApiConfig
 var SQLconfig DBconfig
 
+var secretKey *rsa.PrivateKey
+var publicKey *rsa.PublicKey
+
 func ping(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	a := map[string]string{"Status": "Success", "message": "pong"}
@@ -84,16 +88,12 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// JWTトークンの検証
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte("ACCESS_SECRET_KEY"), nil
-	})
+	token, err := VerifyToken(tokenString, publicKey)
 	if err != nil {
-		log.Errorf("JWT parsing error: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"Status": "Failed", "message": "Unauthorized"})
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
 		return
 	}
 
@@ -111,7 +111,7 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 	startDate := Param.Get("StartDate")
 	endDate := Param.Get("EndDate")
 
-	if classID == "" || startDate == "" || endDate == "" {
+	if startDate == "" || endDate == "" {
 		http.Error(w, "Missing required parameters", http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{
 			"Status":  "Failed",
@@ -119,7 +119,9 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
+	if classID == "" {
+		classID = claims["uid"].(string)
+	}
 	// レッスンデータの取得
 	log.Infof("Access FROM %s", claims["uid"].(string))
 	statusCode, lesson := GetLesson(classID, startDate, endDate)
@@ -163,19 +165,15 @@ func GoSchool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte("ACCESS_SECRET_KEY"), nil
-	})
+	token, err := VerifyToken(tokenString, publicKey)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
 		return
 	}
-
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if AttendSchool(claims["uid"].(string)) != 200 {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			log.Errorf("%s", r.Method+" /GoSchool　"+"500 "+"IP:"+r.RemoteAddr)
@@ -201,7 +199,6 @@ func signin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authHeader := r.Header.Get("Authorization")
-	fmt.Println(authHeader)
 	if authHeader == "" {
 		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 		log.Errorf("%s", r.Method+" /signin　"+"401 "+"IP:"+r.RemoteAddr)
@@ -260,31 +257,31 @@ func signin(w http.ResponseWriter, r *http.Request) {
 
 	user := UserInfo(uid)
 	if user != (User{}) {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"uid":        user.uid,
-			"Permission": user.Permission,
-			"exp":        time.Now().Add(time.Hour * 24).Unix(),
-		})
-		tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+		permission, err := strconv.Atoi(user.Permission)
+		if err != nil {
+			log.Errorf("Failed to convert permission to int: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+			json.NewEncoder(w).Encode(a)
+			return
+		}
+		tokenString, err := GenerateJWT(user.uid, permission, secretKey)
 		if err != nil {
 			log.Errorf("Failed to sign token: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
 			json.NewEncoder(w).Encode(a)
 			return
+		} else {
+			w.WriteHeader(http.StatusOK)
+			a := map[string]string{"token": tokenString}
+			json.NewEncoder(w).Encode(a)
+			return
 		}
-		w.WriteHeader(http.StatusOK)
-		a := map[string]string{"token": tokenString}
-		json.NewEncoder(w).Encode(a)
 	} else {
 		permission, statuscode := InsertUser(uid, email, photoURL)
 		if statuscode == 200 {
-			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"uid":        uid,
-				"Permission": permission,
-				"exp":        time.Now().Add(time.Hour * 24).Unix(),
-			})
-			tokenString, err := token.SignedString([]byte("ACCESS_SECRET_KEY"))
+			tokenString, err := GenerateJWT(uid, permission, secretKey)
 			if err != nil {
 				log.Errorf("Failed to sign token: %v", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -334,6 +331,23 @@ func main() {
 	SQLconfig, err = DBinit(AppDir + "/config/config.json")
 	if err != nil {
 		log.Errorf("Failed to initialize database: %v", err)
+	}
+	// 鍵の設定
+	rawSercretKey, err := ioutil.ReadFile(AppDir + "/certification/secret.key")
+	if err != nil {
+		log.Errorf("Failed to read secret key: %v", err)
+		panic(err)
+	}
+	rawPublicKey, err := ioutil.ReadFile(AppDir + "/certification/publickey.pem")
+	if err != nil {
+		log.Errorf("Failed to read public key: %v", err)
+		panic(err)
+	}
+
+	secretKey, publicKey, err = ParseKeys(rawSercretKey, rawPublicKey)
+	if err != nil {
+		log.Errorf("Failed to parse keys: %v", err)
+		panic(err)
 	}
 
 	// ルーティング設定

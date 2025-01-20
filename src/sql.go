@@ -69,7 +69,7 @@ func UserInfo(uid string) (user User) {
 		panic(err.Error())
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT * FROM Users WHERE uid = ?", uid)
+	rows, err := db.Query("SELECT uid,name,email,photoURL,GradeInSchool,ClassInSchool,Number,SchoolClub,Permission FROM Users WHERE uid = ?", uid)
 	if err != nil {
 		log.Errorf("Error getting user info: %v", err)
 	} else {
