@@ -1,0 +1,3 @@
+#Ctrl+Alt+R to Send Request
+GET http://localhost/api/GoSchool
+Authorization: Bearer TEST
