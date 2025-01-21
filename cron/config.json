@@ -1,0 +1,11 @@
+[
+    {
+        "schedule": "@every 1m",
+        "command": "echo 'test1111' >> /backup/test.log"
+    },
+    {
+        "comment": "20時に時間割変更を送信する",
+        "schedule": "0 20 * * *",
+        "command": "/scripts/backup.sh"
+    }
+]

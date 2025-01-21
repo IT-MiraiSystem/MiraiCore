@@ -25,3 +25,14 @@ services:
     depends_on:
       - api
     restart: always
+  cron:
+    build:
+      context: ./cron
+      dockerfile: cron.Dockerfile
+    depends_on:
+      - api
+      - db
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./cron:/opt/crontab/config.json
