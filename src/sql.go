@@ -21,15 +21,15 @@ type DBconfig struct {
 }
 
 type User struct {
-	uid           string
-	name          string
-	photoURL      string
-	GradeInSchool int
-	ClassInSchool string
-	email         string
-	SchoolClub    string
-	Number        int
-	Permission    string
+	UID           string `json:"uid"`
+	Name          string `json:"name"`
+	PhotoURL      string `json:"photoURL"`
+	GradeInSchool int    `json:"gradeInSchool"`
+	ClassInSchool string `json:"classInSchool"`
+	Email         string `json:"email"`
+	SchoolClub    string `json:"schoolClub"`
+	Number        int    `json:"number"`
+	Permission    int    `json:"permission"`
 }
 
 type Lesson struct {
@@ -62,6 +62,28 @@ func DBinit(configPath string) (DBconfig, error) {
 	dbconfig.pass = config["db"].(map[string]interface{})["pass"].(string)
 	return dbconfig, nil
 }
+func UserList() (statuscode int, userList []User) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT uid,name,email,photoURL,GradeInSchool,ClassInSchool,Number,SchoolClub,Permission FROM Users")
+	if err != nil {
+		log.Errorf("Error getting user list: %v", err)
+		return 500, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var user User
+		err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
+		if err != nil {
+			log.Fatal(err)
+		}
+		userList = append(userList, user)
+	}
+	return 200, userList
+}
 
 func UserInfo(uid string) (user User) {
 	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
@@ -75,7 +97,7 @@ func UserInfo(uid string) (user User) {
 	} else {
 		defer rows.Close()
 		for rows.Next() {
-			err = rows.Scan(&user.uid, &user.name, &user.email, &user.photoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
+			err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -180,7 +202,7 @@ func AttendSchool(uid string) (statuscode int) {
 	var user User = UserInfo(uid)
 	currentDate := time.Now().Format("2006-01-02")
 	CommuteTime := time.Now().Format("15:04:05")
-	_, err = db.Exec("INSERT INTO GoSchool (uid, name, email, photoURL, GradeInSchool, ClassInSchool, Number, Date, CommuteTime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", uid, user.name, user.email, user.photoURL, user.GradeInSchool, user.ClassInSchool, user.Number, currentDate, CommuteTime)
+	_, err = db.Exec("INSERT INTO GoSchool (uid, name, email, photoURL, GradeInSchool, ClassInSchool, Number, Date, CommuteTime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", uid, user.Name, user.Email, user.PhotoURL, user.GradeInSchool, user.ClassInSchool, user.Number, currentDate, CommuteTime)
 	if err != nil {
 		log.Errorf("Error going to school: %v", err)
 		return 500

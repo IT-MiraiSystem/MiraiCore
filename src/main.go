@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	firebase "firebase.google.com/go"
@@ -69,6 +68,73 @@ func ping(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a)
 }
 
+func userList(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /userList　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /userList　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /userList　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if permission, ok := claims["permission"].(float64); ok && permission > 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			log.Errorf("%s", r.Method+" /userList　"+"403 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
+			json.NewEncoder(w).Encode(a)
+			return
+		}
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Errorf("%s", r.Method+" /userList　"+"401 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			err, users := UserList()
+			if err != 200 {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				log.Errorf("%s", r.Method+" /userList　"+"500 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			log.Infof("%s", r.Method+" /userList　"+"200 "+"IP:"+r.RemoteAddr)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(users)
+		}
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /userList　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+	}
+}
+
 func LessonChange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "POST" {
@@ -116,7 +182,7 @@ func LessonChange(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(a)
 			return
 		} else {
-			var lessonChanges []map[string]string
+			var lessonChanges []LessonChangeRequest
 			err := json.NewDecoder(r.Body).Decode(&lessonChanges)
 			if err != nil {
 				http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -126,22 +192,15 @@ func LessonChange(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			for _, lessonChange := range lessonChanges {
-				if lessonChange["ClassID"] == "" || lessonChange["Lesson"] == "" || lessonChange["Room"] == "" || lessonChange["Teacher"] == "" || lessonChange["Date"] == "" || lessonChange["DayOfTheWeek"] == "" || lessonChange["LessonNumber"] == "" {
+				if lessonChange.ClassID == "" || lessonChange.Lesson == "" || lessonChange.Room == "" || lessonChange.Teacher == "" || lessonChange.Date == "" || lessonChange.DayOfTheWeek == "" || lessonChange.LessonNumber == 0 {
 					http.Error(w, "Missing required parameters", http.StatusBadRequest)
 					log.Errorf("%s", r.Method+" /LessonChange　"+"400 "+"IP:"+r.RemoteAddr)
 					a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
 					json.NewEncoder(w).Encode(a)
 					return
 				}
-				lessonNumber, err := strconv.Atoi(lessonChange["LessonNumber"])
-				if err != nil {
-					http.Error(w, "Invalid LessonNumber", http.StatusBadRequest)
-					log.Errorf("%s", r.Method+" /LessonChange　"+"400 "+"IP:"+r.RemoteAddr)
-					a := map[string]string{"Status": "Failed", "message": "Invalid LessonNumber"}
-					json.NewEncoder(w).Encode(a)
-					return
-				}
-				if UpdateLesson(lessonChange["ClassID"], lessonChange["DayOfTheWeek"], lessonNumber, lessonChange["Lesson"], lessonChange["Room"], lessonChange["Teacher"], lessonChange["date"]) != 200 {
+				lessonNumber := lessonChange.LessonNumber
+				if UpdateLesson(lessonChange.ClassID, lessonChange.DayOfTheWeek, lessonNumber, lessonChange.Lesson, lessonChange.Room, lessonChange.Teacher, lessonChange.Date) != 200 {
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 					log.Errorf("%s", r.Method+" /LessonChange　"+"500 "+"IP:"+r.RemoteAddr)
 					a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
@@ -360,15 +419,7 @@ func signin(w http.ResponseWriter, r *http.Request) {
 
 	user := UserInfo(uid)
 	if user != (User{}) {
-		permission, err := strconv.Atoi(user.Permission)
-		if err != nil {
-			log.Errorf("Failed to convert permission to int: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
-			json.NewEncoder(w).Encode(a)
-			return
-		}
-		tokenString, err := GenerateJWT(user.uid, permission, secretKey)
+		tokenString, err := GenerateJWT(user.UID, user.Permission, secretKey)
 		if err != nil {
 			log.Errorf("Failed to sign token: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -459,6 +510,7 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonDetails", LessonDetails).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/userList", userList).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonChange", LessonChange).Methods("POST")
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
