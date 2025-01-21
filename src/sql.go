@@ -284,3 +284,16 @@ func InsertUser(uid string, email string, photoUrl string) (Permission int, stat
 	}
 	return 0, 404
 }
+
+func InsertIssue(ClassID string, Issue string, Lesson string, Term string) (statuscode int) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	_, err = db.Exec("INSERT INTO Issue(ClassID, Issue, Lesson, Term) VALUES (?,?,?,?)", ClassID, Issue, Lesson, Term)
+	if err != nil {
+		return 500
+	}
+	return 200
+}
