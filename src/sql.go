@@ -85,6 +85,20 @@ func UserInfo(uid string) (user User) {
 	return User{}
 }
 
+func UpdateLesson(classid string, DayOfTheWeek string, lessonNumber int, lesson string, room string, teacher string, date string) (statuscode int) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	_, err = db.Exec("INSERT INTO ChangeOfClass(ClassID, LeasonNumber, Lesson, Room, Teacher, Date,DayOfTheWeek) VALUES (?,?,?,?,?,?,?)", classid, lessonNumber, lesson, room, teacher, date, DayOfTheWeek)
+	if err != nil {
+		log.Errorf("Error updating lesson: %v", err)
+		return 500
+	}
+	return 200
+}
+
 func GetLesson(classid string, startDate string, EndDate string) (statuscode int, returnLesson map[string]interface{}) {
 	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
 	if err != nil {

@@ -35,6 +35,15 @@ type SigninRequest struct {
 	PhotoUrl string `json:"photoUrl"`
 }
 
+type LessonChangeRequest struct {
+	ClassID      string `json:"ClassID"`
+	Lesson       string `json:"Lesson"`
+	Room         string `json:"Room"`
+	Teacher      string `json:"Teacher"`
+	Date         string `json:"Date"`
+	DayOfTheWeek string `json:"DayOfTheWeek"`
+	LessonNumber int    `json:"LessonNumber"`
+}
 type CustomFormatter struct {
 	TimestampFormat string
 }
@@ -61,7 +70,100 @@ func ping(w http.ResponseWriter, r *http.Request) {
 }
 
 func LessonChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /LessonChange　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /LessonChange　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /LessonChange　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if permission, ok := claims["permission"].(float64); ok && permission > 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			log.Errorf("%s", r.Method+" /LessonChange　"+"403 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
+			json.NewEncoder(w).Encode(a)
+			return
+		}
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Errorf("%s", r.Method+" /LessonChange　"+"401 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			var lessonChanges []map[string]string
+			err := json.NewDecoder(r.Body).Decode(&lessonChanges)
+			if err != nil {
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				log.Errorf("%s", r.Method+" /LessonChange　"+"400 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Bad Request"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			for _, lessonChange := range lessonChanges {
+				if lessonChange["ClassID"] == "" || lessonChange["Lesson"] == "" || lessonChange["Room"] == "" || lessonChange["Teacher"] == "" || lessonChange["Date"] == "" || lessonChange["DayOfTheWeek"] == "" || lessonChange["LessonNumber"] == "" {
+					http.Error(w, "Missing required parameters", http.StatusBadRequest)
+					log.Errorf("%s", r.Method+" /LessonChange　"+"400 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+					json.NewEncoder(w).Encode(a)
+					return
+				}
+				lessonNumber, err := strconv.Atoi(lessonChange["LessonNumber"])
+				if err != nil {
+					http.Error(w, "Invalid LessonNumber", http.StatusBadRequest)
+					log.Errorf("%s", r.Method+" /LessonChange　"+"400 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Invalid LessonNumber"}
+					json.NewEncoder(w).Encode(a)
+					return
+				}
+				if UpdateLesson(lessonChange["ClassID"], lessonChange["DayOfTheWeek"], lessonNumber, lessonChange["Lesson"], lessonChange["Room"], lessonChange["Teacher"], lessonChange["date"]) != 200 {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					log.Errorf("%s", r.Method+" /LessonChange　"+"500 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+					json.NewEncoder(w).Encode(a)
+				} else {
+					log.Infof("%s", r.Method+" /LessonChange　"+"200 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Success", "message": "Lesson changes processed"}
+					json.NewEncoder(w).Encode(a)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusOK)
+			a := map[string]string{"Status": "Success", "message": "Lesson changes processed"}
+			json.NewEncoder(w).Encode(a)
+		}
 
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /LessonChange　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+	}
 }
 
 func LessonDetails(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +224,7 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 	if classID == "" {
 		classID = claims["uid"].(string)
 	}
+
 	// レッスンデータの取得
 	log.Infof("Access FROM %s", claims["uid"].(string))
 	statusCode, lesson := GetLesson(classID, startDate, endDate)
@@ -356,7 +459,7 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/signin", signin).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonDetails", LessonDetails).Methods("GET")
-
+	r.HandleFunc(APIconfig.location+"/LessonChange", LessonChange).Methods("POST")
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
 	fmt.Println("Port:" + APIconfig.port + "\n")

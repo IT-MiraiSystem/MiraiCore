@@ -1,0 +1,16 @@
+#Ctrl+Alt+R to Send Request
+POST http://localhost/api/LessonChange
+Authorization: Bearer TEST
+Content-Type: application/json
+
+[
+    {
+        "date": "2022-01-01",
+        "dayOfTheWeek": "Monday",
+        "classId": "2F",
+        "lessonNumber": 1,
+        "lesson": "Math",
+        "room": "Room 101",
+        "teacher": "T001"
+    }
+]
