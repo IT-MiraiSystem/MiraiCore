@@ -18,7 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/api/option"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 )
 
 type ApiConfig struct {
@@ -49,6 +49,11 @@ type IssueRegisterRequest struct {
 	Issue   string `json:"Issue"`
 	Term    string `json:"term"`
 	Lesson  string `json:"Lesson"`
+}
+
+type Subject struct {
+	UID     string `json:"UID"`
+	Subject string `json:"Subject"`
 }
 
 type CustomFormatter struct {
@@ -198,6 +203,73 @@ func InsertSubject(w http.ResponseWriter, r *http.Request) {
 		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
 		json.NewEncoder(w).Encode(a)
 		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /InsertSubject　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /InsertSubject　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if permission, ok := claims["permission"].(float64); ok && permission < 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			log.Errorf("%s", r.Method+" /InsertSubject　"+"403 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			var subjects []Subject
+			err := json.NewDecoder(r.Body).Decode(&subjects)
+			if err != nil {
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				log.Errorf("%s", r.Method+" /InsertSubject　"+"400 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Bad Request"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			for _, subject := range subjects {
+				if subject.UID == "" || subject.Subject == "" {
+					http.Error(w, "Missing required parameters", http.StatusBadRequest)
+					log.Errorf("%s", r.Method+" /InsertSubject　"+"400 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+					json.NewEncoder(w).Encode(a)
+					return
+				}
+				if InsertSubjectData(subject.UID, subject.Subject) != 200 {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					log.Errorf("%s", r.Method+" /InsertSubject　"+"500 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+					json.NewEncoder(w).Encode(a)
+					return
+				}
+				log.Infof("%s", r.Method+" /InsertSubject　"+"200 "+"IP:"+r.RemoteAddr)
+				w.WriteHeader(http.StatusOK)
+				a := map[string]string{"Status": "Success", "message": "Subject inserted"}
+				json.NewEncoder(w).Encode(a)
+			}
+		}
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /InsertSubject　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
 	}
 }
 
@@ -646,6 +718,7 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/userList", userList).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonChange", LessonChange).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/AdminGet", AdminGet).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/InsertSubject", InsertSubject).Methods("POST")
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
 	fmt.Println("Port:" + APIconfig.port + "\n")

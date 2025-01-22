@@ -1,0 +1,18 @@
+POST http://localhost/api/InsertSubject
+Authorization: Bearer 
+Content-Type: application/json
+
+[
+    {
+        "UID":"USERID",
+        "Subject":"数学II"
+    }
+    ,{
+        "UID":"USERID",
+        "Subject":"DB"
+    },
+    {
+        "UID":"USERID",
+        "Subject":"NW"
+    }
+]

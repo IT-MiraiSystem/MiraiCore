@@ -1,21 +1,26 @@
 openapi: 3.0.0
 info:
   title: MiraiCore API
+  description: API documentation for MiraiCore
   version: 1.0.0
+
 servers:
-  - url: http://{host}:{port}/api
+  - url: http://{host}:{port}/{basePath}
     variables:
       host:
-        default: core.yarukihaoutide.online
+        default: localhost
       port:
         default: "80"
+      basePath:
+        default: api
+
 paths:
   /ping:
     get:
       summary: Ping the server
       responses:
-        '200':
-          description: Successful response
+        "200":
+          description: Pong response
           content:
             application/json:
               schema:
@@ -25,6 +30,7 @@ paths:
                     type: string
                   message:
                     type: string
+
   /signin:
     get:
       summary: Sign in a user
@@ -35,7 +41,7 @@ paths:
           schema:
             type: string
       responses:
-        '200':
+        "200":
           description: Successful sign in
           content:
             application/json:
@@ -44,15 +50,14 @@ paths:
                 properties:
                   token:
                     type: string
-        '400':
-          description: Invalid request payload
-        '415':
-          description: Unsupported Media Type
-        '500':
+        "401":
+          description: Unauthorized
+        "500":
           description: Internal Server Error
+
   /GoSchool:
     get:
-      summary: Mark attendance for a user
+      summary: Record a user's attendance
       parameters:
         - in: header
           name: Authorization
@@ -60,8 +65,8 @@ paths:
           schema:
             type: string
       responses:
-        '200':
-          description: Successful attendance
+        "200":
+          description: Successful attendance record
           content:
             application/json:
               schema:
@@ -71,10 +76,11 @@ paths:
                     type: string
                   message:
                     type: string
-        '401':
+        "401":
           description: Unauthorized
-        '500':
+        "500":
           description: Internal Server Error
+
   /LessonDetails:
     get:
       summary: Get lesson details
@@ -86,6 +92,7 @@ paths:
             type: string
         - in: query
           name: ClassID
+          required: false
           schema:
             type: string
         - in: query
@@ -99,63 +106,61 @@ paths:
           schema:
             type: string
       responses:
-        '200':
-          description: Successful response
+        "200":
+          description: Successful retrieval of lesson details
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  Monday:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        ClassID:
-                          type: string
-                        DayOfTheWeek:
-                          type: string
-                        LessonNumber:
-                          type: integer
-                        Lesson:
-                          type: string
-                        Room:
-                          type: string
-                        Teacher:
-                          type: string
-                        StartTime:
-                          type: string
-                        EndTime:
-                          type: string
-                  Tuesday:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        ClassID:
-                          type: string
-                        DayOfTheWeek:
-                          type: string
-                        LessonNumber:
-                          type: integer
-                        Lesson:
-                          type: string
-                        Room:
-                          type: string
-                        Teacher:
-                          type: string
-                        StartTime:
-                          type: string
-                        EndTime:
-                          type: string
-        '400':
-          description: Missing required parameters
-        '401':
+        "400":
+          description: Bad Request
+        "401":
           description: Unauthorized
-        '500':
+        "500":
           description: Internal Server Error
-        '404':
-          description: Not Found
+
+  /userList:
+    get:
+      summary: Get the list of users
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful retrieval of user list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    uid:
+                      type: string
+                    name:
+                      type: string
+                    email:
+                      type: string
+                    photoURL:
+                      type: string
+                    gradeInSchool:
+                      type: integer
+                    classInSchool:
+                      type: string
+                    number:
+                      type: integer
+                    schoolClub:
+                      type: string
+                    permission:
+                      type: integer
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+
   /LessonChange:
     post:
       summary: Change lesson details
@@ -189,7 +194,7 @@ paths:
                   LessonNumber:
                     type: integer
       responses:
-        '200':
+        "200":
           description: Successful lesson change
           content:
             application/json:
@@ -200,11 +205,9 @@ paths:
                     type: string
                   message:
                     type: string
-        '400':
-          description: Invalid request payload
-        '401':
+        "400":
+          description: Bad Request
+        "401":
           description: Unauthorized
-        '403':
-          description: Forbidden
-        '500':
+        "500":
           description: Internal Server Error

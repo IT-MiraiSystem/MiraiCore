@@ -1,6 +1,6 @@
 [
     {
-        "schedule": "@every 1m",
+        "schedule": "課題の通知を送る",
         "command": "echo 'test1111' >> /backup/test.log"
     },
     {

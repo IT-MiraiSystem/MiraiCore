@@ -62,6 +62,7 @@ func DBinit(configPath string) (DBconfig, error) {
 	dbconfig.pass = config["db"].(map[string]interface{})["pass"].(string)
 	return dbconfig, nil
 }
+
 func UserList() (statuscode int, userList []User) {
 	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
 	if err != nil {
@@ -116,6 +117,20 @@ func UpdateLesson(classid string, DayOfTheWeek string, lessonNumber int, lesson 
 	_, err = db.Exec("INSERT INTO ChangeOfClass(ClassID, LeasonNumber, Lesson, Room, Teacher, Date,DayOfTheWeek) VALUES (?,?,?,?,?,?,?)", classid, lessonNumber, lesson, room, teacher, date, DayOfTheWeek)
 	if err != nil {
 		log.Errorf("Error updating lesson: %v", err)
+		return 500
+	}
+	return 200
+}
+
+func InsertSubjectData(uid string, subject string) (statuscode int) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	_, err = db.Exec("UPDATE Users SET Subject=JSON_ARRAY_APPEND(Subject,'$',?) WHERE uid=?", subject, uid)
+	if err != nil {
+		log.Errorf("Error inserting subject: %v", err)
 		return 500
 	}
 	return 200
@@ -273,7 +288,7 @@ func InsertUser(uid string, email string, photoUrl string) (Permission int, stat
 				log.Errorf("Error converting number: %v", err)
 				return 0, 500
 			}
-			_, err = db.Exec("INSERT INTO Users(uid, name, photoURL, GradeInSchool, ClassInSchool, email, SchoolClub, Number, Permission) VALUES (?,?,?,?,?,?,?,?,?)", uid, Names[i], photoUrl, GradeList[i], ClassList[i], email, Clubs[i], number, Permissions[i])
+			_, err = db.Exec("INSERT INTO Users(uid, name, photoURL, GradeInSchool, ClassInSchool, email, SchoolClub, Number, Permission, Subject) VALUES (?,?,?,?,?,?,?,?,?,JSON_ARRAY())", uid, Names[i], photoUrl, GradeList[i], ClassList[i], email, Clubs[i], number, Permissions[i])
 			if err != nil {
 				log.Errorf("Error inserting user: %v", err)
 				return 0, 500

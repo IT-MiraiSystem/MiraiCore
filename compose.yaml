@@ -27,7 +27,7 @@ services:
     restart: always
   cron:
     build:
-      context: ./cron
+      context: .
       dockerfile: cron.Dockerfile
     depends_on:
       - api
@@ -35,4 +35,10 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./cron:/opt/crontab/config.json
+      - ./cron:/config.json/crontab/config.json
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token eyJhIjoiMTgxZmY2OThmODgxMWJjYTE4OWE0N2NkNTdiZjc0N2UiLCJ0IjoiM2MwNWJkZTYtNDcyNi00OWM0LWE1ZTgtM2Y3ZjUzOGMwZDQ0IiwicyI6Ik4yVmhZalV3WmpBdFpqTmpNaTAwTmpFNExXSTROalV0TjJFeVltTTROekUyTWpnMyJ9
+    depends_on:
+      - web
+    restart: always
