@@ -44,9 +44,9 @@ type LessonChangeRequest struct {
 	LessonNumber int    `json:"LessonNumber"`
 }
 
-type IssueRegisterRequest struct {
+type issuesRegisterRequest struct {
 	ClassID string `json:"ClassID"`
-	Issue   string `json:"Issue"`
+	Issues  string `json:"issues"`
 	Term    string `json:"term"`
 	Lesson  string `json:"Lesson"`
 }
@@ -124,11 +124,11 @@ func AdminGet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func IssueRegister(w http.ResponseWriter, r *http.Request) {
+func issuesRegister(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "POST" {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		log.Errorf("%s", r.Method+" /IssueRegister　"+"405 "+"IP:"+r.RemoteAddr)
+		log.Errorf("%s", r.Method+" /issuesRegister　"+"405 "+"IP:"+r.RemoteAddr)
 		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
 		json.NewEncoder(w).Encode(a)
 		return
@@ -136,7 +136,7 @@ func IssueRegister(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
 		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
-		log.Errorf("%s", r.Method+" /IssueRegister　"+"401 "+"IP:"+r.RemoteAddr)
+		log.Errorf("%s", r.Method+" /issuesRegister　"+"401 "+"IP:"+r.RemoteAddr)
 		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
 		json.NewEncoder(w).Encode(a)
 		return
@@ -151,7 +151,7 @@ func IssueRegister(w http.ResponseWriter, r *http.Request) {
 	token, err := VerifyToken(tokenString, publicKey)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		log.Errorf("%s", r.Method+" /IssueRegister　"+"401 "+"IP:"+r.RemoteAddr)
+		log.Errorf("%s", r.Method+" /issuesRegister　"+"401 "+"IP:"+r.RemoteAddr)
 		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
 		json.NewEncoder(w).Encode(a)
 		return
@@ -159,37 +159,37 @@ func IssueRegister(w http.ResponseWriter, r *http.Request) {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		if claims["permission"].(float64) < 2 {
 			http.Error(w, "Forbidden", http.StatusForbidden)
-			log.Errorf("%s", r.Method+" /IssueRegister　"+"403 "+"IP:"+r.RemoteAddr)
+			log.Errorf("%s", r.Method+" /issuesRegister　"+"403 "+"IP:"+r.RemoteAddr)
 			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
 			json.NewEncoder(w).Encode(a)
 			return
 		} else {
-			var issueRegister IssueRegisterRequest
-			err := json.NewDecoder(r.Body).Decode(&issueRegister)
+			var issuesRegister issuesRegisterRequest
+			err := json.NewDecoder(r.Body).Decode(&issuesRegister)
 			if err != nil {
 				http.Error(w, "Bad Request", http.StatusBadRequest)
-				log.Errorf("%s", r.Method+" /IssueRegister　"+"400 "+"IP:"+r.RemoteAddr)
+				log.Errorf("%s", r.Method+" /issuesRegister　"+"400 "+"IP:"+r.RemoteAddr)
 				a := map[string]string{"Status": "Failed", "message": "Bad Request"}
 				json.NewEncoder(w).Encode(a)
 				return
 			}
-			if issueRegister.ClassID == "" || issueRegister.Issue == "" {
+			if issuesRegister.ClassID == "" || issuesRegister.Issues == "" || issuesRegister.Lesson == "" || issuesRegister.Term == "" {
 				http.Error(w, "Missing required parameters", http.StatusBadRequest)
-				log.Errorf("%s", r.Method+" /IssueRegister　"+"400 "+"IP:"+r.RemoteAddr)
+				log.Errorf("%s", r.Method+" /issuesRegister　"+"400 "+"IP:"+r.RemoteAddr)
 				a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
 				json.NewEncoder(w).Encode(a)
 				return
 			}
-			if InsertIssue(issueRegister.ClassID, issueRegister.Issue, issueRegister.Lesson, issueRegister.Term) != 200 {
+			if InsertIssues(issuesRegister.ClassID, issuesRegister.Issues, issuesRegister.Lesson, issuesRegister.Term) != 200 {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				log.Errorf("%s", r.Method+" /IssueRegister　"+"500 "+"IP:"+r.RemoteAddr)
+				log.Errorf("%s", r.Method+" /issuesRegister　"+"500 "+"IP:"+r.RemoteAddr)
 				a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
 				json.NewEncoder(w).Encode(a)
 				return
 			}
-			log.Infof("%s", r.Method+" /IssueRegister　"+"200 "+"IP:"+r.RemoteAddr)
+			log.Infof("%s", r.Method+" /issuesRegister　"+"200 "+"IP:"+r.RemoteAddr)
 			w.WriteHeader(http.StatusOK)
-			a := map[string]string{"Status": "Success", "message": "Issue registered"}
+			a := map[string]string{"Status": "Success", "message": "issues registered"}
 			json.NewEncoder(w).Encode(a)
 		}
 	}
@@ -273,6 +273,79 @@ func InsertSubject(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getattendance(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "POST" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /getattendance　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /getattendance　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /getattendance　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if claims["permission"].(float64) < 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			log.Errorf("%s", r.Method+" /getattendance　"+"403 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				log.Errorf("%s", r.Method+" /getattendance　"+"400 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Bad Request"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			if body["ClassID"] == "" || body["StartDate"] == "" || body["EndDate"] == "" || body["Lesson"] == "" {
+				http.Error(w, "Missing required parameters", http.StatusBadRequest)
+				log.Errorf("%s", r.Method+" /getattendance　"+"400 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			statuscode, attendance := GetAttendance(body["ClassID"], body["Lesson"], body["StartDate"], body["EndDate"])
+			if statuscode != 200 {
+				http.Error(w, "Not Found", http.StatusNotFound)
+				log.Errorf("%s", r.Method+" /getattendance　"+"404 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Not Found"}
+				json.NewEncoder(w).Encode(a)
+				return
+			}
+			log.Infof("%s", r.Method+" /getattendance　"+"200 "+"IP:"+r.RemoteAddr)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(attendance)
+		}
+	}
+}
+
+func getissuess(w http.ResponseWriter, r *http.Request) {
+
+}
 func userList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
@@ -719,6 +792,8 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/LessonChange", LessonChange).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/AdminGet", AdminGet).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/InsertSubject", InsertSubject).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/issuesRegister", issuesRegister).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/getattendance", getattendance).Methods("POST")
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
 	fmt.Println("Port:" + APIconfig.port + "\n")

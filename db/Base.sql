@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS `Users` (
   PRIMARY KEY (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS `Issue` (
+  `ClassID` TEXT NOT NULL,
+  `Issue` TEXT NOT NULL,
+  `Lesson` TEXT NOT NULL,
+  `Period` TEXT NOT NULL,
+  `Submitter` JSON
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE IF NOT EXISTS `GoSchool` (
   `uid` VARCHAR(100) NOT NULL,
   `name` varchar(10) NOT NULL,
@@ -52,6 +60,14 @@ CREATE TABLE IF NOT EXISTS `GoSchool` (
   `EarlyBackTime` VARCHAR(1) DEFAULT 0,
   `Date` date NOT NULL,
   `CommuteTime` date NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `attendance`(
+  `ClassID` varchar(5) NOT NULL,
+  `Leasson` VARCHAR(20) NOT NULL,
+  `Date` date NOT NULL,
+  `LeasonNumber` int(10) NOT NULL,
+  `Attendance` JSON
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE USER IF NOT EXISTS 'MiraiCore'@'%' IDENTIFIED BY 'KT34i5kirQpV';

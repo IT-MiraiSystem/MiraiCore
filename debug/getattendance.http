@@ -1,0 +1,10 @@
+POST http://localhost/api/getattendance
+Authorization: Bearer TEST
+Content-Type: application/json
+
+{
+    "ClassID":"2F",
+    "StartDate":"2025-01-01",
+    "EndDate":"2025-12-31",
+    "Lesson":"TEST"
+}

@@ -43,6 +43,13 @@ type Lesson struct {
 	EndTime      string `json:"EndTime"`
 }
 
+type attendancelist struct {
+	ClassID      string   `json:"classid"`
+	Attendance   []string `json:"attendance"`
+	Lesson       string   `json:"lesson"`
+	LessonNumber int      `json:"lessonnumber"`
+}
+
 func DBinit(configPath string) (DBconfig, error) {
 	byteArray, err := ioutil.ReadFile(configPath)
 	if err != nil {
@@ -84,6 +91,29 @@ func UserList() (statuscode int, userList []User) {
 		userList = append(userList, user)
 	}
 	return 200, userList
+}
+
+func GetAttendance(classID string, Lesson string, StartDate string, StopDate string) (statuscode int, attendanceList []attendancelist) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT ClassID,Leasson,LeasonNumber,Attendance FROM attendance WHERE Date BETWEEN ? AND ? AND ClassID = ? AND Leasson = ?", StartDate, StopDate, classID, Lesson)
+	if err != nil {
+		log.Errorf("Error getting attendance: %v", err)
+		return 500, nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var attendance attendancelist
+		err = rows.Scan(&attendance.ClassID, &attendance.Lesson, &attendance.LessonNumber, &attendance.Attendance)
+		if err != nil {
+			log.Fatal(err)
+		}
+		attendanceList = append(attendanceList, attendance)
+	}
+	return 200, attendanceList
 }
 
 func UserInfo(uid string) (user User) {
@@ -300,14 +330,15 @@ func InsertUser(uid string, email string, photoUrl string) (Permission int, stat
 	return 0, 404
 }
 
-func InsertIssue(ClassID string, Issue string, Lesson string, Term string) (statuscode int) {
+func InsertIssues(ClassID string, Issue string, Lesson string, Term string) (statuscode int) {
 	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
 	if err != nil {
 		panic(err.Error())
 	}
 	defer db.Close()
-	_, err = db.Exec("INSERT INTO Issue(ClassID, Issue, Lesson, Term) VALUES (?,?,?,?)", ClassID, Issue, Lesson, Term)
+	_, err = db.Exec("INSERT INTO Issue(ClassID, Issue, Lesson, Period,Submitter) VALUES (?,?,?,?,JSON_ARRAY())", ClassID, Issue, Lesson, Term)
 	if err != nil {
+		log.Errorf("Error inserting issue: %v", err)
 		return 500
 	}
 	return 200

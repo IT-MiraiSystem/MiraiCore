@@ -1,0 +1,10 @@
+POST http://localhost/api/IssueRegister
+Authorization: Bearer TEST
+Content-Type: application/json
+
+{
+    "ClassID":"2F",
+    "Issue":"ホウコクショカケ",
+    "Lesson":"阿南",
+    "Term":"2025-02-12"
+}
