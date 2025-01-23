@@ -25,25 +25,31 @@ CREATE TABLE IF NOT EXISTS `ClassTimetable`(
 
 CREATE TABLE IF NOT EXISTS `Users` (
   `uid` VARCHAR(100) NOT NULL,
-  `name` varchar(10) NOT NULL,
-  `email` text NOT NULL,
-  `photoURL` text NOT NULL,
-  `GradeInSchool` text NOT NULL,
-  `ClassInSchool` text NOT NULL,
-  `Number` int(11) NOT NULL,
-  `SchoolClub` text,
-  `location` text,
-  `Permission` int(1) DEFAULT 0,
+  `name` VARCHAR(10) NOT NULL,
+  `email` TEXT NOT NULL,
+  `photoURL` TEXT NOT NULL,
+  `GradeInSchool` TEXT NOT NULL,
+  `ClassInSchool` TEXT NOT NULL,
+  `Number` INT(11) NOT NULL,
+  `SchoolClub` TEXT,
+  `location` TEXT,
+  `Permission` INT(1) DEFAULT 0,
   `Subject` JSON,
   PRIMARY KEY (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `Issue` (
-  `ClassID` TEXT NOT NULL,
+  `ClassID` VARCHAR(5) NOT NULL,
   `Issue` TEXT NOT NULL,
   `Lesson` TEXT NOT NULL,
   `Period` TEXT NOT NULL,
   `Submitter` JSON
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `Event`(
+  `ClassID` varchar(5) NOT NULL,
+  `Event` TEXT NOT NULL,
+  `Date` date NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `GoSchool` (

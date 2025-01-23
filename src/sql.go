@@ -21,15 +21,16 @@ type DBconfig struct {
 }
 
 type User struct {
-	UID           string `json:"uid"`
-	Name          string `json:"name"`
-	PhotoURL      string `json:"photoURL"`
-	GradeInSchool int    `json:"gradeInSchool"`
-	ClassInSchool string `json:"classInSchool"`
-	Email         string `json:"email"`
-	SchoolClub    string `json:"schoolClub"`
-	Number        int    `json:"number"`
-	Permission    int    `json:"permission"`
+	UID           string   `json:"uid"`
+	Name          string   `json:"name"`
+	PhotoURL      string   `json:"photoURL"`
+	GradeInSchool int      `json:"gradeInSchool"`
+	ClassInSchool string   `json:"classInSchool"`
+	Email         string   `json:"email"`
+	SchoolClub    string   `json:"schoolClub"`
+	Number        int      `json:"number"`
+	Permission    int      `json:"permission"`
+	Subject       []string `json:"subject"`
 }
 
 type Lesson struct {
@@ -46,8 +47,17 @@ type Lesson struct {
 type attendancelist struct {
 	ClassID      string   `json:"classid"`
 	Attendance   []string `json:"attendance"`
+	Date         string   `json:"date"`
 	Lesson       string   `json:"lesson"`
 	LessonNumber int      `json:"lessonnumber"`
+}
+
+type Issues struct {
+	ClassID   string `json:"classid"`
+	Issue     string `json:"issue"`
+	Lesson    string `json:"lesson"`
+	Period    string `json:"period"`
+	Submitter []string
 }
 
 func DBinit(configPath string) (DBconfig, error) {
@@ -76,7 +86,7 @@ func UserList() (statuscode int, userList []User) {
 		panic(err.Error())
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT uid,name,email,photoURL,GradeInSchool,ClassInSchool,Number,SchoolClub,Permission FROM Users")
+	rows, err := db.Query("SELECT uid, name, email, photoURL, GradeInSchool, ClassInSchool, Number, SchoolClub, Permission, Subject FROM Users")
 	if err != nil {
 		log.Errorf("Error getting user list: %v", err)
 		return 500, nil
@@ -84,9 +94,16 @@ func UserList() (statuscode int, userList []User) {
 	defer rows.Close()
 	for rows.Next() {
 		var user User
-		err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
+		var subjectData []byte
+		err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission, &subjectData)
 		if err != nil {
-			log.Fatal(err)
+			log.Errorf("Error scanning user: %v", err)
+			return 500, nil
+		}
+		err = json.Unmarshal(subjectData, &user.Subject)
+		if err != nil {
+			log.Errorf("Error unmarshalling subject data: %v", err)
+			return 500, nil
 		}
 		userList = append(userList, user)
 	}
@@ -99,7 +116,7 @@ func GetAttendance(classID string, Lesson string, StartDate string, StopDate str
 		panic(err.Error())
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT ClassID,Leasson,LeasonNumber,Attendance FROM attendance WHERE Date BETWEEN ? AND ? AND ClassID = ? AND Leasson = ?", StartDate, StopDate, classID, Lesson)
+	rows, err := db.Query("SELECT ClassID,Leasson,LeasonNumber,Attendance,Date FROM attendance WHERE Date BETWEEN ? AND ? AND ClassID = ? AND Leasson = ?", StartDate, StopDate, classID, Lesson)
 	if err != nil {
 		log.Errorf("Error getting attendance: %v", err)
 		return 500, nil
@@ -107,7 +124,7 @@ func GetAttendance(classID string, Lesson string, StartDate string, StopDate str
 	defer rows.Close()
 	for rows.Next() {
 		var attendance attendancelist
-		err = rows.Scan(&attendance.ClassID, &attendance.Lesson, &attendance.LessonNumber, &attendance.Attendance)
+		err = rows.Scan(&attendance.ClassID, &attendance.Lesson, &attendance.LessonNumber, &attendance.Attendance, &attendance.Date)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -122,13 +139,18 @@ func UserInfo(uid string) (user User) {
 		panic(err.Error())
 	}
 	defer db.Close()
-	rows, err := db.Query("SELECT uid,name,email,photoURL,GradeInSchool,ClassInSchool,Number,SchoolClub,Permission FROM Users WHERE uid = ?", uid)
+	rows, err := db.Query("SELECT uid,name,email,photoURL,GradeInSchool,ClassInSchool,Number,SchoolClub,Permission,Subject FROM Users WHERE uid = ?", uid)
 	if err != nil {
 		log.Errorf("Error getting user info: %v", err)
 	} else {
 		defer rows.Close()
 		for rows.Next() {
-			err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission)
+			var subjectData []byte
+			err = rows.Scan(&user.UID, &user.Name, &user.Email, &user.PhotoURL, &user.GradeInSchool, &user.ClassInSchool, &user.Number, &user.SchoolClub, &user.Permission, &subjectData)
+			if err != nil {
+				log.Fatal(err)
+			}
+			err = json.Unmarshal(subjectData, &user.Subject)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -328,6 +350,72 @@ func InsertUser(uid string, email string, photoUrl string) (Permission int, stat
 		}
 	}
 	return 0, 404
+}
+
+func GetEvent(ClassID string, StartDate string, EndDate string) (events []Event, err error) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		log.Errorf("Error opening database connection: %v", err)
+		return nil, err
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT * FROM Event WHERE ClassID = ? AND Date BETWEEN ? AND ?", ClassID, StartDate, EndDate)
+	if err != nil {
+		log.Errorf("Error getting event: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event Event
+		err = rows.Scan(&event.ClassID, &event.Event, &event.Date)
+		if err != nil {
+			log.Fatal(err)
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func InsertEvent(ClassID string, Event string, Date string) (statuscode int) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	_, err = db.Exec("INSERT INTO Event(ClassID, Event, Date) VALUES (?,?,?)", ClassID, Event, Date)
+	if err != nil {
+		log.Errorf("Error inserting event: %v", err)
+		return 500
+	}
+	return 200
+}
+
+func GetIssues(GradeInSchool string, ClassInSchool string) (issues []Issues) {
+	db, err := sql.Open("mysql", SQLconfig.user+":"+SQLconfig.pass+"@tcp("+SQLconfig.host+":"+strconv.Itoa(SQLconfig.port)+")/"+SQLconfig.database)
+	if err != nil {
+		panic(err.Error())
+	}
+	defer db.Close()
+	rows, err := db.Query("SELECT * FROM Issue WHERE ClassID = ?", GradeInSchool+ClassInSchool)
+	if err != nil {
+		log.Errorf("Error getting issues: %v", err)
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var issue Issues
+		var submitterData []byte
+		err = rows.Scan(&issue.ClassID, &issue.Issue, &issue.Lesson, &issue.Period, &submitterData)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = json.Unmarshal(submitterData, &issue.Submitter)
+		if err != nil {
+			log.Fatal(err)
+		}
+		issues = append(issues, issue)
+	}
+	return issues
 }
 
 func InsertIssues(ClassID string, Issue string, Lesson string, Term string) (statuscode int) {

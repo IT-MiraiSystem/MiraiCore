@@ -60,6 +60,12 @@ type CustomFormatter struct {
 	TimestampFormat string
 }
 
+type Event struct {
+	ClassID string `json:"ClassID"`
+	Event   string `json:"Event"`
+	Date    string `json:"Date"`
+}
+
 func (f *CustomFormatter) Format(entry *log.Entry) ([]byte, error) {
 	timestamp := entry.Time.Format(f.TimestampFormat)
 	logMessage := fmt.Sprintf("%s [%s] %s\n", timestamp, entry.Level.String(), entry.Message)
@@ -81,46 +87,82 @@ func ping(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(a)
 }
 
-// Admin権限は授業変更を調べるためのJWTを発行するだけ
-func AdminGet(w http.ResponseWriter, r *http.Request) {
+func insertEvent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "POST" {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		log.Errorf("%s", r.Method+" /AdminGet　"+"405 "+"IP:"+r.RemoteAddr)
+		log.Errorf("%s", r.Method+" /insertEvent　"+"405 "+"IP:"+r.RemoteAddr)
 		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
 		json.NewEncoder(w).Encode(a)
 		return
 	}
-	var body map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Bad Request", http.StatusBadRequest)
-		log.Errorf("%s", r.Method+" /AdminGet　"+"400 "+"IP:"+r.RemoteAddr)
-		a := map[string]string{"Status": "Failed", "message": "Bad Request"}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /insertEvent　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
 		json.NewEncoder(w).Encode(a)
 		return
 	}
-	if body["username"] == "" || body["password"] == "" {
-		http.Error(w, "Missing required parameters", http.StatusBadRequest)
-		log.Errorf("%s", r.Method+" /AdminGet　"+"400 "+"IP:"+r.RemoteAddr)
-		a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
 		json.NewEncoder(w).Encode(a)
 		return
-	} else {
-		if body["username"] == "admin" && body["password"] == "dswx{W_qOu^g~@Ik%6n8RoSPlp%A:p-F?v!r}^eRfrbxjhat&#" {
-			tokenString, err := GenerateJWT("admin", 3, secretKey)
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /insertEvent　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if permission, ok := claims["permission"].(float64); ok && permission > 2 {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			log.Errorf("%s", r.Method+" /insertEvent　"+"403 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			var event []Event
+			err := json.NewDecoder(r.Body).Decode(&event)
 			if err != nil {
-				log.Errorf("Failed to sign token: %v", err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+				http.Error(w, "Bad Request", http.StatusBadRequest)
+				log.Errorf("%s", r.Method+" /insertEvent　"+"400 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Bad Request"}
 				json.NewEncoder(w).Encode(a)
 				return
 			}
-			w.WriteHeader(http.StatusOK)
-			a := map[string]string{"token": tokenString}
-			log.Infof("%s", r.Method+" /AdminGet　"+"200 "+"IP:"+r.RemoteAddr)
-			json.NewEncoder(w).Encode(a)
+			for _, e := range event {
+				if e.ClassID == "" || e.Event == "" || e.Date == "" {
+					http.Error(w, "Missing required parameters", http.StatusBadRequest)
+					log.Errorf("%s", r.Method+" /insertEvent　"+"400 "+"IP:"+r.RemoteAddr)
+					a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+					json.NewEncoder(w).Encode(a)
+					return
+				} else {
+					if InsertEvent(e.ClassID, e.Event, e.Date) != 200 {
+						http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+						log.Errorf("%s", r.Method+" /insertEvent　"+"500 "+"IP:"+r.RemoteAddr)
+						a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+						json.NewEncoder(w).Encode(a)
+						return
+					}
+				}
+				log.Infof("%s", r.Method+" /insertEvent　"+"200 "+"IP:"+r.RemoteAddr)
+				w.WriteHeader(http.StatusOK)
+				a := map[string]string{"Status": "Success", "message": "Event registered"}
+				json.NewEncoder(w).Encode(a)
+			}
 		}
-
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /insertEvent　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
 	}
 }
 
@@ -342,9 +384,112 @@ func getattendance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
-func getissuess(w http.ResponseWriter, r *http.Request) {
-
+func getissues(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /getissues　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /getissues　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /getissues　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		user := UserInfo(claims["uid"].(string))
+		issues := GetIssues(fmt.Sprintf("%d", user.GradeInSchool), user.ClassInSchool)
+		if issues == nil {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			log.Errorf("%s", r.Method+" /getissues　"+"404 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Not Found"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			log.Infof("%s", r.Method+" /getissues　"+"200 "+"IP:"+r.RemoteAddr)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(issues)
+			return
+		}
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /getissues　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+	}
+}
+func myprofile(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /myprofile　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /myprofile　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /myprofile　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		user := UserInfo(claims["uid"].(string))
+		if user.UID != "" || user.Name != "" || user.PhotoURL != "" || user.GradeInSchool != 0 || user.ClassInSchool != "" || user.Email != "" || user.SchoolClub != "" || user.Number != 0 || user.Permission != 0 {
+			log.Infof("%s", r.Method+" /myprofile　"+"200 "+"IP:"+r.RemoteAddr)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(user)
+			return
+		} else {
+			http.Error(w, "Acount Not Found", http.StatusNotFound)
+			log.Errorf("%s", r.Method+" /myprofile　"+"404 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Acount Not Found"}
+			json.NewEncoder(w).Encode(a)
+			return
+		}
+	} else {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /myprofile　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+	}
 }
 func userList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -379,7 +524,7 @@ func userList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		if permission, ok := claims["permission"].(float64); ok && permission > 2 {
+		if permission, ok := claims["permission"].(float64); ok && permission < 2 {
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			log.Errorf("%s", r.Method+" /userList　"+"403 "+"IP:"+r.RemoteAddr)
 			a := map[string]string{"Status": "Failed", "message": "Forbidden"}
@@ -628,7 +773,66 @@ func GoSchool(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("%s", r.Method+" /GoSchool　"+"401 "+"IP:"+r.RemoteAddr)
 	}
 }
-
+func events(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != "GET" {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		log.Errorf("%s", r.Method+" /events　"+"405 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Method Not Allowed"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Authorization header missing", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /events　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Authorization header missing"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	if tokenString == authHeader {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		a := map[string]string{"Status": "Failed", "message": "Invalid Authorization header format"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	token, err := VerifyToken(tokenString, publicKey)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Errorf("%s", r.Method+" /events　"+"401 "+"IP:"+r.RemoteAddr)
+		a := map[string]string{"Status": "Failed", "message": "Unauthorized"}
+		json.NewEncoder(w).Encode(a)
+		return
+	}
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		StartDate := r.URL.Query().Get("StartDate")
+		EndDate := r.URL.Query().Get("EndDate")
+		if StartDate == "" || EndDate == "" {
+			http.Error(w, "Missing required parameters", http.StatusBadRequest)
+			log.Errorf("%s", r.Method+" /events　"+"400 "+"IP:"+r.RemoteAddr)
+			a := map[string]string{"Status": "Failed", "message": "Missing required parameters"}
+			json.NewEncoder(w).Encode(a)
+			return
+		} else {
+			user := UserInfo(claims["uid"].(string))
+			event, err := GetEvent(fmt.Sprintf("%d%s", user.GradeInSchool, user.ClassInSchool), StartDate, EndDate)
+			if err != nil {
+				log.Error("Failed to get event data" + err.Error())
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				log.Errorf("%s", r.Method+" /events　"+"500 "+"IP:"+r.RemoteAddr)
+				a := map[string]string{"Status": "Failed", "message": "Internal Server Error"}
+				json.NewEncoder(w).Encode(a)
+				return
+			} else {
+				log.Infof("%s", r.Method+" /events　"+"200 "+"IP:"+r.RemoteAddr)
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(event)
+				return
+			}
+		}
+	}
+}
 func signin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
@@ -696,7 +900,7 @@ func signin(w http.ResponseWriter, r *http.Request) {
 	photoURL := userRecord.PhotoURL
 
 	user := UserInfo(uid)
-	if user != (User{}) {
+	if user.UID != "" || user.Name != "" || user.PhotoURL != "" || user.GradeInSchool != 0 || user.ClassInSchool != "" || user.Email != "" || user.SchoolClub != "" || user.Number != 0 || user.Permission != 0 || len(user.Subject) != 0 {
 		tokenString, err := GenerateJWT(user.UID, user.Permission, secretKey)
 		if err != nil {
 			log.Errorf("Failed to sign token: %v", err)
@@ -721,6 +925,7 @@ func signin(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(a)
 				return
 			}
+			log.Infof("%s", r.Method+" /signin　"+"200 "+"IP:"+r.RemoteAddr)
 			w.WriteHeader(http.StatusOK)
 			a := map[string]string{"token": tokenString}
 			json.NewEncoder(w).Encode(a)
@@ -789,11 +994,14 @@ func main() {
 	r.HandleFunc(APIconfig.location+"/GoSchool", GoSchool).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonDetails", LessonDetails).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/userList", userList).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/getissues", getissues).Methods("GET")
+	r.HandleFunc(APIconfig.location+"/Events", events).Methods("GET")
 	r.HandleFunc(APIconfig.location+"/LessonChange", LessonChange).Methods("POST")
-	r.HandleFunc(APIconfig.location+"/AdminGet", AdminGet).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/InsertSubject", InsertSubject).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/InsertEvent", insertEvent).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/issuesRegister", issuesRegister).Methods("POST")
 	r.HandleFunc(APIconfig.location+"/getattendance", getattendance).Methods("POST")
+	r.HandleFunc(APIconfig.location+"/myprofile", myprofile).Methods("GET")
 	fmt.Println("Server Config is ...")
 	fmt.Println("Host:" + APIconfig.host)
 	fmt.Println("Port:" + APIconfig.port + "\n")
