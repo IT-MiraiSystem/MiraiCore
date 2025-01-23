@@ -8,7 +8,7 @@ servers:
   - url: http://{host}:{port}/{basePath}
     variables:
       host:
-        default: localhost
+        default: core.yarukihaoutide.online
       port:
         default: "80"
       basePath:
@@ -160,6 +160,123 @@ paths:
           description: Unauthorized
         "500":
           description: Internal Server Error
+  /getissues:
+    get:
+      summary: Get issues
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful retrieval of issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ClassID:
+                      type: string
+                    Issues:
+                      type: string
+                    Term:
+                      type: string
+                    Lesson:
+                      type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+
+  /myprofile:
+    get:
+      summary: Get user profile
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful retrieval of user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uid:
+                    type: string
+                  name:
+                    type: string
+                  email:
+                    type: string
+                  photoURL:
+                    type: string
+                  gradeInSchool:
+                    type: integer
+                  classInSchool:
+                    type: string
+                  number:
+                    type: integer
+                  schoolClub:
+                    type: string
+                  permission:
+                    type: integer
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not Found
+        "500":
+          description: Internal Server Error
+
+  /events:
+    get:
+      summary: Get events
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: StartDate
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: EndDate
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successful retrieval of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    ClassID:
+                      type: string
+                    Event:
+                      type: string
+                    Date:
+                      type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
 
   /LessonChange:
     post:
@@ -196,6 +313,186 @@ paths:
       responses:
         "200":
           description: Successful lesson change
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+
+  /InsertSubject:
+    post:
+      summary: Insert subject data
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                UID:
+                  type: string
+                Subject:
+                  type: string
+      responses:
+        "200":
+          description: Successful subject insertion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "500":
+          description: Internal Server Error
+
+  /issuesRegister:
+    post:
+      summary: Register issues
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClassID:
+                  type: string
+                Issues:
+                  type: string
+                Term:
+                  type: string
+                Lesson:
+                  type: string
+      responses:
+        "200":
+          description: Successful issues registration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  Status:
+                    type: string
+                  message:
+                    type: string
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "500":
+          description: Internal Server Error
+
+  /getattendance:
+    post:
+      summary: Get attendance data
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClassID:
+                  type: string
+                StartDate:
+                  type: string
+                EndDate:
+                  type: string
+                Lesson:
+                  type: string
+      responses:
+        "200":
+          description: Successful retrieval of attendance data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    classid:
+                      type: string
+                    attendance:
+                      type: array
+                      items:
+                        type: string
+                    lesson:
+                      type: string
+                    lessonnumber:
+                      type: integer
+        "400":
+          description: Bad Request
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden
+        "500":
+          description: Internal Server Error
+
+  /InsertEvent:
+    post:
+      summary: Insert event
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ClassID:
+                  type: string
+                Event:
+                  type: string
+                Date:
+                  type: string
+      responses:
+        "200":
+          description: Successful event insertion
           content:
             application/json:
               schema:
