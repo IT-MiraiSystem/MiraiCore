@@ -1,0 +1,11 @@
+POST http://localhost/api/InsertEvent
+Authorization: Bearer TEST
+Content-Type: application/json
+
+[
+    {
+        "ClassID":"2F",
+        "Event":"エンドレスホウコクショ",
+        "Date":"2025-02-11"
+    }
+]

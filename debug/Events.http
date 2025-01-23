@@ -1,0 +1,2 @@
+GET http://localhost/api/Events?StartDate=2025-02-11&EndDate=2025-02-11
+Authorization: Bearer TEST

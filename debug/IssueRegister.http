@@ -1,10 +1,10 @@
-POST http://localhost/api/IssueRegister
+POST http://localhost/api/issuesRegister
 Authorization: Bearer TEST
 Content-Type: application/json
 
 {
     "ClassID":"2F",
-    "Issue":"ホウコクショカケ",
+    "issues":"ホウコクショカケ",
     "Lesson":"阿南",
-    "Term":"2025-02-12"
+    "term":"2025-02-12"
 }
