@@ -704,7 +704,8 @@ func LessonDetails(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if classID == "" {
-		classID = claims["uid"].(string)
+		user := UserInfo(claims["uid"].(string))
+		classID = fmt.Sprintf("%d%s", user.GradeInSchool, user.ClassInSchool)
 	}
 
 	// レッスンデータの取得
